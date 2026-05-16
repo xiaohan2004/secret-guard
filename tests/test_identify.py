@@ -1,4 +1,7 @@
 from secret_guard import (
+    SensitiveKind,
+    classify_key_name,
+    classify_value,
     is_high_confidence_secret_value,
     is_common_public_ip,
     is_interesting_public_ip,
@@ -87,3 +90,16 @@ def test_public_endpoint_helpers_identify_unusual_ports():
     assert not is_unusual_public_endpoint("8.8.8.8:45678")
     assert not is_unusual_public_endpoint("127.0.0.1:45678")
     assert not is_unusual_public_endpoint("not-an-endpoint")
+
+
+def test_classify_key_name_groups_sensitive_fields():
+    assert classify_key_name("api_key") == SensitiveKind.SECRET
+    assert classify_key_name("user_email") == SensitiveKind.ACCOUNT
+    assert classify_key_name("normal_key") is None
+
+
+def test_classify_value_groups_sensitive_values():
+    assert classify_value("sk-12345678901234567890") == SensitiveKind.SECRET
+    assert classify_value("93.184.216.34") == SensitiveKind.NETWORK
+    assert classify_value("93.184.216.34:45678") == SensitiveKind.NETWORK
+    assert classify_value("8.8.8.8") is None

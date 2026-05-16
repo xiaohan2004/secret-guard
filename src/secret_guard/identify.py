@@ -4,6 +4,7 @@ import re
 import ipaddress
 from collections.abc import Iterable
 from dataclasses import dataclass
+from enum import Enum
 
 
 SECRET_KEY_PARTS = (
@@ -49,6 +50,14 @@ SECRET_KEY_PATTERNS = (
     re.compile(r"id.*token"),
     re.compile(r"signing.*secret"),
     re.compile(r"webhook.*secret"),
+)
+
+ACCOUNT_KEY_PARTS = (
+    "username",
+    "user_name",
+    "account",
+    "login",
+    "email",
 )
 
 SECRET_VALUE_PATTERNS = (
@@ -142,6 +151,14 @@ class PublicEndpoint:
     port: int
 
 
+class SensitiveKind(str, Enum):
+    """Supported sensitive information categories."""
+
+    SECRET = "secret"
+    ACCOUNT = "account"
+    NETWORK = "network"
+
+
 def normalize_key_name(key: str) -> str:
     """Normalize a field name for fuzzy secret-key matching."""
     return re.sub(r"[^a-z0-9]", "", key.lower())
@@ -170,6 +187,17 @@ def is_sensitive_key(
             for pattern in SECRET_KEY_PATTERNS
         )
     )
+
+
+def classify_key_name(key: str) -> SensitiveKind | None:
+    """Classify a sensitive field name."""
+    normalized = key.lower()
+    compact = normalize_key_name(key)
+    if any(part in normalized or normalize_key_name(part) in compact for part in ACCOUNT_KEY_PARTS):
+        return SensitiveKind.ACCOUNT
+    if is_sensitive_key(key):
+        return SensitiveKind.SECRET
+    return None
 
 
 def parse_assignment(line: str) -> Assignment | None:
@@ -257,3 +285,12 @@ def is_unusual_public_endpoint(
         is_interesting_public_ip(endpoint.ip, common_public_ips=common_public_ips)
         and endpoint.port not in ports
     )
+
+
+def classify_value(value: str) -> SensitiveKind | None:
+    """Classify a sensitive value."""
+    if is_high_confidence_secret_value(value):
+        return SensitiveKind.SECRET
+    if is_interesting_public_ip(value) or is_unusual_public_endpoint(value):
+        return SensitiveKind.NETWORK
+    return None
