@@ -1,4 +1,6 @@
-from secret_guard import FileKind, classify_file, has_findings, iter_scan_files, scan_file, scan_high_confidence_text, scan_path, scan_text
+import sqlite3
+
+from secret_guard import FileKind, classify_file, has_findings, iter_scan_files, scan_file, scan_high_confidence_text, scan_path, scan_sqlite, scan_text
 
 
 def test_scan_text_returns_redacted_findings():
@@ -85,3 +87,20 @@ def test_classify_file_groups_supported_file_types():
     assert classify_file("app.py") == FileKind.CODE
     assert classify_file("openclass.db") == FileKind.SQLITE
     assert classify_file("notes.txt") == FileKind.TEXT
+
+
+def test_scan_sqlite_scans_key_value_tables(tmp_path):
+    db_path = tmp_path / "config.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("create table settings (key text, value text)")
+        conn.execute("insert into settings values (?, ?)", ("api_key", "sk-12345678901234567890"))
+        conn.execute("insert into settings values (?, ?)", ("normal_key", "value"))
+        conn.execute("insert into settings values (?, ?)", ("placeholder", "your-api-key"))
+
+    findings = scan_sqlite(db_path, salt=b"fixed-salt")
+
+    assert len(findings) == 1
+    assert findings[0].path == db_path.as_posix()
+    assert findings[0].line == 1
+    assert findings[0].key == "settings.api_key"
+    assert "sk-" not in findings[0].fingerprint

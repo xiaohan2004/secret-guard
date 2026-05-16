@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import os
 import secrets
+import sqlite3
 from hashlib import sha256
 from pathlib import Path
 from enum import Enum
@@ -229,4 +230,63 @@ def scan_path(
         findings.extend(
             scan_file(path, salt=salt, max_text_bytes=max_text_bytes)
         )
+    return sorted(findings)
+
+
+def scan_sqlite(
+    path: str | Path,
+    *,
+    salt: bytes | None = None,
+) -> list[Finding]:
+    """Scan SQLite key/value tables without exposing raw values."""
+    file_path = Path(path)
+    scan_salt = salt if salt is not None else secrets.token_bytes(32)
+    findings: set[Finding] = set()
+
+    try:
+        conn = sqlite3.connect(f"file:{file_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return []
+
+    try:
+        cursor = conn.cursor()
+        tables = [
+            row[0]
+            for row in cursor.execute("select name from sqlite_master where type='table'")
+        ]
+        for table in tables:
+            columns = [row[1] for row in cursor.execute(f'pragma table_info("{table}")')]
+            lower_columns = {column.lower(): column for column in columns}
+            if "key" not in lower_columns or "value" not in lower_columns:
+                continue
+
+            key_col = lower_columns["key"]
+            value_col = lower_columns["value"]
+            for row_no, (key, value) in enumerate(
+                cursor.execute(f'select "{key_col}", "{value_col}" from "{table}"'),
+                start=1,
+            ):
+                key_text = "" if key is None else str(key)
+                value_text = "" if value is None else str(value)
+                if looks_like_placeholder(value_text):
+                    continue
+
+                kind = classify_key_name(key_text) or classify_value(value_text)
+                if kind is None:
+                    continue
+
+                findings.add(
+                    Finding(
+                        category=kind.value,
+                        path=file_path.as_posix(),
+                        line=row_no,
+                        key=f"{table}.{key_text}",
+                        fingerprint=fingerprint_secret(value_text, salt=scan_salt),
+                    )
+                )
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+
     return sorted(findings)
