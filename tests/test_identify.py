@@ -8,6 +8,7 @@ from secret_guard import (
     is_public_ip,
     is_sensitive_key,
     is_unusual_public_endpoint,
+    looks_like_placeholder,
     normalize_key_name,
     parse_assignment,
     parse_ip_port,
@@ -103,3 +104,11 @@ def test_classify_value_groups_sensitive_values():
     assert classify_value("93.184.216.34") == SensitiveKind.NETWORK
     assert classify_value("93.184.216.34:45678") == SensitiveKind.NETWORK
     assert classify_value("8.8.8.8") is None
+
+
+def test_looks_like_placeholder_filters_common_placeholders():
+    assert looks_like_placeholder("your-api-key")
+    assert looks_like_placeholder("${API_KEY}")
+    assert looks_like_placeholder("xxxx")
+    assert not looks_like_placeholder("sk-real-value-123456")
+    assert classify_value("test-key") is None

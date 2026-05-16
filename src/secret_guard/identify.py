@@ -118,6 +118,39 @@ COMMON_PORTS = {
     27017,
 }
 
+PLACEHOLDER_VALUES = {
+    "",
+    "none",
+    "null",
+    "nil",
+    "false",
+    "true",
+    "test",
+    "test-key",
+    "test-api-key",
+    "secret-token",
+    "example",
+    "placeholder",
+    "changeme",
+    "change-me",
+    "your-api-key",
+    "your_api_key",
+    "your-password",
+    "your_username",
+    "username",
+    "user",
+    "admin",
+    "example.com",
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "xxx",
+    "xxxx",
+    "***",
+    "not_given",
+    "not-given",
+}
+
 IP_PORT_PATTERN = re.compile(
     r"^(?P<ip>(?:\d{1,3}\.){3}\d{1,3}):(?P<port>\d{1,5})$"
 )
@@ -289,8 +322,28 @@ def is_unusual_public_endpoint(
 
 def classify_value(value: str) -> SensitiveKind | None:
     """Classify a sensitive value."""
+    if looks_like_placeholder(value):
+        return None
     if is_high_confidence_secret_value(value):
         return SensitiveKind.SECRET
     if is_interesting_public_ip(value) or is_unusual_public_endpoint(value):
         return SensitiveKind.NETWORK
     return None
+
+
+def looks_like_placeholder(value: str) -> bool:
+    """Return whether a value is likely a placeholder instead of real sensitive data."""
+    normalized = value.strip().strip('"\'').lower()
+    if normalized in PLACEHOLDER_VALUES:
+        return True
+    if normalized.startswith(("default_", "settings.", "os.environ", "env.", "mock_")):
+        return True
+    if any(marker in normalized for marker in ("(", ")", "{", "}", "`", "$", ",")):
+        return True
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", normalized):
+        return True
+    if normalized.startswith("${") or normalized.startswith("<"):
+        return True
+    if len(normalized) < 4:
+        return True
+    return set(normalized) <= {"x", "*", "_", "-"}
