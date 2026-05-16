@@ -1,4 +1,4 @@
-from secret_guard import is_sensitive_key, normalize_key_name
+from secret_guard import is_sensitive_key, normalize_key_name, parse_assignment
 
 
 def test_normalize_key_name_removes_case_and_separators():
@@ -21,3 +21,23 @@ def test_is_sensitive_key_supports_extra_sensitive_keys():
 def test_is_sensitive_key_ignores_non_sensitive_names():
     assert not is_sensitive_key("normal_key")
     assert not is_sensitive_key("max_tokens")
+
+
+def test_parse_assignment_supports_equals_and_colon():
+    equals = parse_assignment("api_key=sk-example")
+    colon = parse_assignment("password: 'secret value'")
+
+    assert equals is not None
+    assert equals.key == "api_key"
+    assert equals.value == "sk-example"
+    assert equals.operator == "="
+
+    assert colon is not None
+    assert colon.key == "password"
+    assert colon.value == "secret value"
+    assert colon.operator == ":"
+    assert colon.quote == "'"
+
+
+def test_parse_assignment_ignores_non_assignments():
+    assert parse_assignment("not an assignment") is None

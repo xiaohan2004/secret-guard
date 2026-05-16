@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from collections.abc import Iterable
 
 
@@ -58,6 +59,26 @@ TOKEN_COUNT_KEYS = {
     "numtokens",
 }
 
+ASSIGNMENT_PATTERN = re.compile(
+    r"^\s*"
+    r"(?P<key>[A-Za-z_][A-Za-z0-9_.-]*)"
+    r"\s*(?P<operator>[:=])\s*"
+    r"(?P<quote>[\"']?)"
+    r"(?P<value>.*?)"
+    r"(?P=quote)"
+    r"\s*(?:#.*)?$"
+)
+
+
+@dataclass(frozen=True)
+class Assignment:
+    """A simple key/value assignment parsed from one text line."""
+
+    key: str
+    value: str
+    operator: str
+    quote: str
+
 
 def normalize_key_name(key: str) -> str:
     """Normalize a field name for fuzzy secret-key matching."""
@@ -86,4 +107,25 @@ def is_sensitive_key(
             pattern.search(normalized) or pattern.search(compact)
             for pattern in SECRET_KEY_PATTERNS
         )
+    )
+
+
+def parse_assignment(line: str) -> Assignment | None:
+    """Parse a simple key/value assignment from one text line."""
+    match = ASSIGNMENT_PATTERN.match(line)
+    if not match:
+        return None
+
+    quote = match.group("quote")
+    value = match.group("value")
+    if quote:
+        value = value.rstrip()
+    else:
+        value = value.strip()
+
+    return Assignment(
+        key=match.group("key"),
+        value=value,
+        operator=match.group("operator"),
+        quote=quote,
     )

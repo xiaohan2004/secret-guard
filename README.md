@@ -31,7 +31,7 @@
    - [x] 判断字段名是否像敏感字段，例如 `apiKey`、`access-token`、`clientSecret`
    - [x] 支持大小写、连接符、下划线、点号等命名差异
    - [x] 支持项目侧传入额外敏感字段集合
-   - [ ] 识别常见赋值语法，例如 `key=value`、`key: value`、带引号的配置值
+   - [x] 识别常见赋值语法，例如 `key=value`、`key: value`、带引号的配置值
    - [ ] 识别高置信密钥值，例如常见 API key、云厂商 key、GitHub token、私钥头
    - [ ] 区分密钥类、账号类、网络地址类等敏感类别
    - [ ] 识别公网 IP
