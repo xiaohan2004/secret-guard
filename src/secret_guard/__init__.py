@@ -17,9 +17,12 @@ from .identify import (
     parse_assignment,
     parse_ip_port,
 )
+from .findings import Finding
+from .scan import fingerprint_secret, has_findings, scan_text
 
 __all__ = [
     "Assignment",
+    "Finding",
     "PublicEndpoint",
     "SensitiveKind",
     "classify_key_name",
@@ -34,4 +37,7 @@ __all__ = [
     "normalize_key_name",
     "parse_assignment",
     "parse_ip_port",
+    "fingerprint_secret",
+    "has_findings",
+    "scan_text",
 ]

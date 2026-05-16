@@ -1,0 +1,23 @@
+from secret_guard import has_findings, scan_text
+
+
+def test_scan_text_returns_redacted_findings():
+    findings = scan_text(
+        "api_key=sk-12345678901234567890\n"
+        "host=93.184.216.34:45678\n"
+        "placeholder=your-api-key\n",
+        path=".env",
+        salt=b"fixed-salt",
+    )
+
+    assert has_findings(findings)
+    assert [(item.category, item.path, item.line, item.key) for item in findings] == [
+        ("network", ".env", 2, "host"),
+        ("secret", ".env", 1, "api_key"),
+    ]
+    assert all("sk-" not in item.fingerprint for item in findings)
+    assert all("93.184" not in item.fingerprint for item in findings)
+
+
+def test_scan_text_ignores_non_sensitive_text():
+    assert scan_text("normal_key=value\nmax_tokens=1024", salt=b"fixed-salt") == []
