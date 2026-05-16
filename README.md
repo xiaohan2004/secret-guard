@@ -40,7 +40,7 @@
    - [x] 过滤明显占位值，例如 `your-api-key`、`example`、`test-key`
    - [x] 避免把 `max_tokens`、`tokens_count` 这类计数字段误判为 token
    - [x] 支持调用方配置额外规则、忽略规则和常见端口列表
-   - [ ] 为识别规则补完整测试用例
+   - [x] 为识别规则补完整测试用例
 
 2. 扫描
 
