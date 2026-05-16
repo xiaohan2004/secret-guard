@@ -1,5 +1,8 @@
 from secret_guard import (
     is_high_confidence_secret_value,
+    is_common_public_ip,
+    is_interesting_public_ip,
+    is_public_ip,
     is_sensitive_key,
     normalize_key_name,
     parse_assignment,
@@ -58,3 +61,13 @@ def test_is_high_confidence_secret_value_matches_known_tokens():
 def test_is_high_confidence_secret_value_ignores_plain_text():
     assert not is_high_confidence_secret_value("not-a-secret")
     assert not is_high_confidence_secret_value("test-key")
+
+
+def test_public_ip_helpers_identify_interesting_public_ips():
+    assert is_public_ip("93.184.216.34")
+    assert not is_public_ip("127.0.0.1")
+    assert not is_public_ip("not-an-ip")
+
+    assert is_common_public_ip("8.8.8.8")
+    assert not is_interesting_public_ip("8.8.8.8")
+    assert is_interesting_public_ip("93.184.216.34")

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+import ipaddress
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 
 SECRET_KEY_PARTS = (
@@ -70,6 +71,15 @@ TOKEN_COUNT_KEYS = {
     "tokenscount",
     "totaltokens",
     "numtokens",
+}
+
+COMMON_PUBLIC_IPS = {
+    "1.1.1.1",
+    "1.0.0.1",
+    "8.8.8.8",
+    "8.8.4.4",
+    "9.9.9.9",
+    "149.112.112.112",
 }
 
 ASSIGNMENT_PATTERN = re.compile(
@@ -147,3 +157,30 @@ def parse_assignment(line: str) -> Assignment | None:
 def is_high_confidence_secret_value(value: str) -> bool:
     """Return whether a value matches a high-confidence secret pattern."""
     return any(pattern.search(value) for pattern in SECRET_VALUE_PATTERNS)
+
+
+def is_public_ip(value: str) -> bool:
+    """Return whether a value is a public IPv4 address."""
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return ip.version == 4 and ip.is_global
+
+
+def is_common_public_ip(value: str, *, common_public_ips: Iterable[str] | None = None) -> bool:
+    """Return whether a public IP is in the common allow-list."""
+    common_ips = set(common_public_ips or COMMON_PUBLIC_IPS)
+    return value in common_ips
+
+
+def is_interesting_public_ip(
+    value: str,
+    *,
+    common_public_ips: Iterable[str] | None = None,
+) -> bool:
+    """Return whether an IPv4 address is public and not a common public service IP."""
+    return is_public_ip(value) and not is_common_public_ip(
+        value,
+        common_public_ips=common_public_ips,
+    )
