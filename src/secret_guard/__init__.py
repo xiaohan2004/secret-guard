@@ -18,7 +18,7 @@ from .identify import (
     parse_ip_port,
 )
 from .findings import Finding
-from .redaction import one_line_preview, redact_text, redact_value
+from .redaction import RedactedValue, one_line_preview, redact_result, redact_text, redact_value
 from .scan import FileKind, classify_file, fingerprint_secret, has_findings, iter_scan_files, scan_file, scan_git_history, scan_high_confidence_text, scan_path, scan_sqlite, scan_text
 
 __all__ = [
@@ -26,6 +26,7 @@ __all__ = [
     "Finding",
     "FileKind",
     "PublicEndpoint",
+    "RedactedValue",
     "SensitiveKind",
     "classify_key_name",
     "classify_value",
@@ -42,6 +43,7 @@ __all__ = [
     "parse_ip_port",
     "redact_text",
     "redact_value",
+    "redact_result",
     "classify_file",
     "fingerprint_secret",
     "has_findings",

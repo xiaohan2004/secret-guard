@@ -1,4 +1,6 @@
-from secret_guard import one_line_preview, redact_text, redact_value
+import json
+
+from secret_guard import one_line_preview, redact_result, redact_text, redact_value
 
 
 def test_redact_value_masks_sensitive_keys():
@@ -31,3 +33,17 @@ def test_redact_value_supports_custom_replacement_and_ignored_keys():
 
 def test_one_line_preview_escapes_newlines_and_backslashes():
     assert one_line_preview("a\\b\nc") == "a\\\\b\\nc"
+
+
+def test_redact_result_provides_safe_text_dict_json_and_fingerprint():
+    result = redact_result("api_key", "real-secret-value", salt=b"fixed-salt")
+
+    assert result.as_text() == "[secret hidden]"
+    assert result.redacted
+    assert result.fingerprint is not None
+    assert result.fingerprint != "real-secret-value"
+    assert "real-secret-value" not in result.as_json()
+
+    data = json.loads(result.as_json())
+    assert data == result.as_dict()
+    assert data["text"] == "[secret hidden]"
