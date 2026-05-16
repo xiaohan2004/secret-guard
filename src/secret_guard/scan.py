@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import secrets
 from hashlib import sha256
+from pathlib import Path
 from typing import Iterable
 
 from .findings import Finding
@@ -14,6 +15,9 @@ from .identify import (
     looks_like_placeholder,
     parse_assignment,
 )
+
+
+MAX_TEXT_BYTES = 5 * 1024 * 1024
 
 
 def fingerprint_secret(raw_value: object, *, salt: bytes | None = None, length: int = 10) -> str:
@@ -76,3 +80,23 @@ def scan_text(
 
 def has_findings(findings: Iterable[Finding]) -> bool:
     return any(True for _ in findings)
+
+
+def scan_file(
+    path: str | Path,
+    *,
+    salt: bytes | None = None,
+    max_text_bytes: int = MAX_TEXT_BYTES,
+) -> list[Finding]:
+    """Scan one UTF-8-like text file and skip binary or oversized files."""
+    file_path = Path(path)
+    try:
+        data = file_path.read_bytes()
+    except OSError:
+        return []
+
+    if b"\0" in data[:4096] or len(data) > max_text_bytes:
+        return []
+
+    text = data.decode("utf-8", errors="ignore")
+    return scan_text(text, path=file_path.as_posix(), salt=salt)
