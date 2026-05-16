@@ -1,3 +1,7 @@
+from pathlib import Path
+
+import pytest
+
 from secret_guard import apply_rewrite_plan, build_rewrite_plan, can_rewrite_path
 
 
@@ -88,3 +92,24 @@ def test_rewrite_rejects_excluded_paths(tmp_path):
 
     assert not can_rewrite_path(config_path)
     assert not build_rewrite_plan(config_path).has_changes()
+
+
+def test_apply_rewrite_plan_keeps_original_file_when_replace_fails(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.env"
+    original_text = "api_key=sk-12345678901234567890\n"
+    config_path.write_text(original_text, encoding="utf-8")
+    plan = build_rewrite_plan(config_path)
+
+    original_replace = Path.replace
+
+    def fail_replace(self, target):
+        if self.name == "config.env.tmp":
+            raise OSError("simulated replace failure")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    with pytest.raises(OSError):
+        apply_rewrite_plan(plan, in_place=True)
+
+    assert config_path.read_text(encoding="utf-8") == original_text
