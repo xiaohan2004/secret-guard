@@ -32,6 +32,12 @@ def test_is_sensitive_key_supports_extra_sensitive_keys():
     assert is_sensitive_key("tenant-id", extra_sensitive_keys={"tenant_id"})
 
 
+def test_is_sensitive_key_supports_ignored_keys():
+    assert not is_sensitive_key("api_key", ignored_keys={"api_key"})
+    assert not is_sensitive_key("api-key", ignored_keys={"api_key"})
+    assert classify_key_name("api_key", ignored_keys={"api_key"}) is None
+
+
 def test_is_sensitive_key_ignores_non_sensitive_names():
     assert not is_sensitive_key("normal_key")
     assert not is_sensitive_key("max_tokens")
@@ -88,6 +94,7 @@ def test_public_endpoint_helpers_identify_unusual_ports():
 
     assert is_unusual_public_endpoint("93.184.216.34:45678")
     assert not is_unusual_public_endpoint("93.184.216.34:443")
+    assert not is_unusual_public_endpoint("93.184.216.34:45678", common_ports={45678})
     assert not is_unusual_public_endpoint("8.8.8.8:45678")
     assert not is_unusual_public_endpoint("127.0.0.1:45678")
     assert not is_unusual_public_endpoint("not-an-endpoint")

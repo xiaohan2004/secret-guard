@@ -201,12 +201,18 @@ def is_sensitive_key(
     key: str,
     *,
     extra_sensitive_keys: Iterable[str] | None = None,
+    ignored_keys: Iterable[str] | None = None,
 ) -> bool:
     """Return whether a field name looks like it may contain sensitive data."""
     normalized = key.lower()
     compact = normalize_key_name(key)
     explicit_keys = {item.lower() for item in extra_sensitive_keys or ()}
     explicit_compact_keys = {normalize_key_name(item) for item in explicit_keys}
+    ignored = {item.lower() for item in ignored_keys or ()}
+    ignored_compact = {normalize_key_name(item) for item in ignored}
+
+    if normalized in ignored or compact in ignored_compact:
+        return False
 
     if compact in TOKEN_COUNT_KEYS:
         return False
@@ -222,13 +228,27 @@ def is_sensitive_key(
     )
 
 
-def classify_key_name(key: str) -> SensitiveKind | None:
+def classify_key_name(
+    key: str,
+    *,
+    extra_sensitive_keys: Iterable[str] | None = None,
+    ignored_keys: Iterable[str] | None = None,
+) -> SensitiveKind | None:
     """Classify a sensitive field name."""
     normalized = key.lower()
     compact = normalize_key_name(key)
+    ignored = {item.lower() for item in ignored_keys or ()}
+    ignored_compact = {normalize_key_name(item) for item in ignored}
+    if normalized in ignored or compact in ignored_compact:
+        return None
+
     if any(part in normalized or normalize_key_name(part) in compact for part in ACCOUNT_KEY_PARTS):
         return SensitiveKind.ACCOUNT
-    if is_sensitive_key(key):
+    if is_sensitive_key(
+        key,
+        extra_sensitive_keys=extra_sensitive_keys,
+        ignored_keys=ignored_keys,
+    ):
         return SensitiveKind.SECRET
     return None
 
