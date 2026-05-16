@@ -4,6 +4,8 @@ import hmac
 import os
 import secrets
 import sqlite3
+import subprocess
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 from enum import Enum
@@ -43,6 +45,20 @@ EXCLUDED_DIRS = {
 CONFIG_SUFFIXES = {".env", ".ini", ".cfg", ".conf", ".yaml", ".yml", ".json", ".toml", ".properties"}
 CODE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".vue", ".java", ".go", ".rs", ".cs", ".cpp", ".c", ".h", ".php", ".rb"}
 SQLITE_SUFFIXES = {".db", ".sqlite", ".sqlite3", ".bak"}
+GIT_GREP_PATTERNS = (
+    r"sk-[A-Za-z0-9_-]{20,}",
+    r"AKIA[0-9A-Z]{16}",
+    r"ASIA[0-9A-Z]{16}",
+    r"AIza[0-9A-Za-z_-]{35}",
+    r"ghp_[0-9A-Za-z]{36}",
+    r"gho_[0-9A-Za-z]{36}",
+    r"github_pat_[0-9A-Za-z_]{20,}",
+    r"glpat-[0-9A-Za-z_-]{20,}",
+    r"xox[baprs]-[0-9A-Za-z-]{10,}",
+    r"-----BEGIN (RSA |OPENSSH |EC |DSA |)PRIVATE KEY-----",
+    r"api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|secret|password|passwd|pwd|authorization|bearer|token|username|user[_-]?name|account|login|email",
+    r"([0-9]{1,3}\.){3}[0-9]{1,3}",
+)
 
 
 class FileKind(str, Enum):
@@ -288,5 +304,55 @@ def scan_sqlite(
         return []
     finally:
         conn.close()
+
+    return sorted(findings)
+
+
+def _run_git(root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
+def scan_git_history(
+    root: str | Path,
+    *,
+    salt: bytes | None = None,
+) -> list[Finding]:
+    """Scan all Git commits reachable from refs."""
+    root_path = Path(root)
+    revs = _run_git(root_path, ["rev-list", "--all"])
+    if revs.returncode != 0:
+        return []
+
+    findings: set[Finding] = set()
+    commits = [line.strip() for line in revs.stdout.splitlines() if line.strip()]
+    for commit in commits:
+        for pattern in GIT_GREP_PATTERNS:
+            result = _run_git(root_path, ["grep", "-n", "-I", "-E", pattern, commit])
+            if result.returncode not in (0, 1):
+                continue
+            for line in result.stdout.splitlines():
+                parts = line.split(":", 3)
+                if len(parts) < 4:
+                    continue
+                commit_id, file_path, line_no_text, content = parts
+                try:
+                    line_no = int(line_no_text)
+                except ValueError:
+                    line_no = 0
+
+                for finding in scan_text(
+                    content,
+                    path=f"{commit_id[:12]}:{file_path}",
+                    salt=salt,
+                ):
+                    findings.add(replace(finding, line=line_no))
 
     return sorted(findings)

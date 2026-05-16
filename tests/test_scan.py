@@ -1,6 +1,7 @@
 import sqlite3
+import subprocess
 
-from secret_guard import FileKind, classify_file, has_findings, iter_scan_files, scan_file, scan_high_confidence_text, scan_path, scan_sqlite, scan_text
+from secret_guard import FileKind, classify_file, has_findings, iter_scan_files, scan_file, scan_git_history, scan_high_confidence_text, scan_path, scan_sqlite, scan_text
 
 
 def test_scan_text_returns_redacted_findings():
@@ -103,4 +104,22 @@ def test_scan_sqlite_scans_key_value_tables(tmp_path):
     assert findings[0].path == db_path.as_posix()
     assert findings[0].line == 1
     assert findings[0].key == "settings.api_key"
+    assert "sk-" not in findings[0].fingerprint
+
+
+def test_scan_git_history_scans_committed_content(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, stdout=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=tmp_path, check=True)
+    secret_path = tmp_path / "config.env"
+    secret_path.write_text("api_key=sk-12345678901234567890\n", encoding="utf-8")
+    subprocess.run(["git", "add", "config.env"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "add config"], cwd=tmp_path, check=True, stdout=subprocess.PIPE)
+
+    findings = scan_git_history(tmp_path, salt=b"fixed-salt")
+
+    assert len(findings) == 1
+    assert findings[0].category == "secret"
+    assert findings[0].path.endswith(":config.env")
+    assert findings[0].line == 1
     assert "sk-" not in findings[0].fingerprint
