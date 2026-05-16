@@ -5,6 +5,7 @@ import os
 import secrets
 from hashlib import sha256
 from pathlib import Path
+from enum import Enum
 from typing import Iterable
 
 from .findings import Finding
@@ -38,6 +39,18 @@ EXCLUDED_DIRS = {
     "target",
     "out",
 }
+CONFIG_SUFFIXES = {".env", ".ini", ".cfg", ".conf", ".yaml", ".yml", ".json", ".toml", ".properties"}
+CODE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".vue", ".java", ".go", ".rs", ".cs", ".cpp", ".c", ".h", ".php", ".rb"}
+SQLITE_SUFFIXES = {".db", ".sqlite", ".sqlite3", ".bak"}
+
+
+class FileKind(str, Enum):
+    """File type buckets used by scanners."""
+
+    CONFIG = "config"
+    CODE = "code"
+    SQLITE = "sqlite"
+    TEXT = "text"
 
 
 def fingerprint_secret(raw_value: object, *, salt: bytes | None = None, length: int = 10) -> str:
@@ -120,6 +133,22 @@ def scan_file(
 
     text = data.decode("utf-8", errors="ignore")
     return scan_text(text, path=file_path.as_posix(), salt=salt)
+
+
+def classify_file(path: str | Path) -> FileKind:
+    """Classify a path into a scanner file kind."""
+    file_path = Path(path)
+    name = file_path.name.lower()
+    suffix = file_path.suffix.lower()
+    if name == ".env" or name.startswith(".env.") or name.endswith(".env"):
+        return FileKind.CONFIG
+    if suffix in CONFIG_SUFFIXES:
+        return FileKind.CONFIG
+    if suffix in SQLITE_SUFFIXES:
+        return FileKind.SQLITE
+    if suffix in CODE_SUFFIXES:
+        return FileKind.CODE
+    return FileKind.TEXT
 
 
 def _is_excluded(path: Path, root: Path, excluded_paths: set[Path]) -> bool:

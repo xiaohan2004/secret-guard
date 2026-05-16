@@ -1,4 +1,4 @@
-from secret_guard import has_findings, iter_scan_files, scan_file, scan_path, scan_text
+from secret_guard import FileKind, classify_file, has_findings, iter_scan_files, scan_file, scan_path, scan_text
 
 
 def test_scan_text_returns_redacted_findings():
@@ -68,3 +68,11 @@ def test_iter_scan_files_supports_excluded_paths(tmp_path):
 
     assert keep_path in files
     assert skip_path not in files
+
+
+def test_classify_file_groups_supported_file_types():
+    assert classify_file(".env") == FileKind.CONFIG
+    assert classify_file("settings.yaml") == FileKind.CONFIG
+    assert classify_file("app.py") == FileKind.CODE
+    assert classify_file("openclass.db") == FileKind.SQLITE
+    assert classify_file("notes.txt") == FileKind.TEXT
