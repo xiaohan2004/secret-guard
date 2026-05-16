@@ -1,4 +1,9 @@
-from secret_guard import is_sensitive_key, normalize_key_name, parse_assignment
+from secret_guard import (
+    is_high_confidence_secret_value,
+    is_sensitive_key,
+    normalize_key_name,
+    parse_assignment,
+)
 
 
 def test_normalize_key_name_removes_case_and_separators():
@@ -41,3 +46,15 @@ def test_parse_assignment_supports_equals_and_colon():
 
 def test_parse_assignment_ignores_non_assignments():
     assert parse_assignment("not an assignment") is None
+
+
+def test_is_high_confidence_secret_value_matches_known_tokens():
+    assert is_high_confidence_secret_value("sk-12345678901234567890")
+    assert is_high_confidence_secret_value("AKIA1234567890ABCDEF")
+    assert is_high_confidence_secret_value("ghp_1234567890abcdefABCDEF1234567890abcd")
+    assert is_high_confidence_secret_value("-----BEGIN PRIVATE KEY-----")
+
+
+def test_is_high_confidence_secret_value_ignores_plain_text():
+    assert not is_high_confidence_secret_value("not-a-secret")
+    assert not is_high_confidence_secret_value("test-key")

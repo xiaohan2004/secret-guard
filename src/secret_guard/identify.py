@@ -50,6 +50,19 @@ SECRET_KEY_PATTERNS = (
     re.compile(r"webhook.*secret"),
 )
 
+SECRET_VALUE_PATTERNS = (
+    re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"ASIA[0-9A-Z]{16}"),
+    re.compile(r"AIza[0-9A-Za-z_-]{35}"),
+    re.compile(r"ghp_[0-9A-Za-z]{36}"),
+    re.compile(r"gho_[0-9A-Za-z]{36}"),
+    re.compile(r"github_pat_[0-9A-Za-z_]{20,}"),
+    re.compile(r"glpat-[0-9A-Za-z_-]{20,}"),
+    re.compile(r"xox[baprs]-[0-9A-Za-z-]{10,}"),
+    re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC |DSA |)PRIVATE KEY-----"),
+)
+
 TOKEN_COUNT_KEYS = {
     "maxtokens",
     "mintokens",
@@ -129,3 +142,8 @@ def parse_assignment(line: str) -> Assignment | None:
         operator=match.group("operator"),
         quote=quote,
     )
+
+
+def is_high_confidence_secret_value(value: str) -> bool:
+    """Return whether a value matches a high-confidence secret pattern."""
+    return any(pattern.search(value) for pattern in SECRET_VALUE_PATTERNS)
