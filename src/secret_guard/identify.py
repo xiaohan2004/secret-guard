@@ -82,6 +82,37 @@ COMMON_PUBLIC_IPS = {
     "149.112.112.112",
 }
 
+COMMON_PORTS = {
+    20,
+    21,
+    22,
+    25,
+    53,
+    80,
+    110,
+    123,
+    143,
+    443,
+    465,
+    587,
+    993,
+    995,
+    3000,
+    3306,
+    5000,
+    5432,
+    6379,
+    8000,
+    8080,
+    8443,
+    9000,
+    27017,
+}
+
+IP_PORT_PATTERN = re.compile(
+    r"^(?P<ip>(?:\d{1,3}\.){3}\d{1,3}):(?P<port>\d{1,5})$"
+)
+
 ASSIGNMENT_PATTERN = re.compile(
     r"^\s*"
     r"(?P<key>[A-Za-z_][A-Za-z0-9_.-]*)"
@@ -101,6 +132,14 @@ class Assignment:
     value: str
     operator: str
     quote: str
+
+
+@dataclass(frozen=True)
+class PublicEndpoint:
+    """A public IP address with a TCP/UDP port."""
+
+    ip: str
+    port: int
 
 
 def normalize_key_name(key: str) -> str:
@@ -183,4 +222,38 @@ def is_interesting_public_ip(
     return is_public_ip(value) and not is_common_public_ip(
         value,
         common_public_ips=common_public_ips,
+    )
+
+
+def parse_ip_port(value: str) -> PublicEndpoint | None:
+    """Parse an IPv4 host:port string."""
+    match = IP_PORT_PATTERN.match(value.strip())
+    if not match:
+        return None
+
+    try:
+        port = int(match.group("port"))
+    except ValueError:
+        return None
+    if not 0 < port <= 65535:
+        return None
+
+    return PublicEndpoint(ip=match.group("ip"), port=port)
+
+
+def is_unusual_public_endpoint(
+    value: str,
+    *,
+    common_public_ips: Iterable[str] | None = None,
+    common_ports: Iterable[int] | None = None,
+) -> bool:
+    """Return whether a value is a public IP with an uncommon port."""
+    endpoint = parse_ip_port(value)
+    if endpoint is None:
+        return False
+
+    ports = set(common_ports or COMMON_PORTS)
+    return (
+        is_interesting_public_ip(endpoint.ip, common_public_ips=common_public_ips)
+        and endpoint.port not in ports
     )

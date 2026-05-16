@@ -4,8 +4,10 @@ from secret_guard import (
     is_interesting_public_ip,
     is_public_ip,
     is_sensitive_key,
+    is_unusual_public_endpoint,
     normalize_key_name,
     parse_assignment,
+    parse_ip_port,
 )
 
 
@@ -71,3 +73,17 @@ def test_public_ip_helpers_identify_interesting_public_ips():
     assert is_common_public_ip("8.8.8.8")
     assert not is_interesting_public_ip("8.8.8.8")
     assert is_interesting_public_ip("93.184.216.34")
+
+
+def test_public_endpoint_helpers_identify_unusual_ports():
+    endpoint = parse_ip_port("93.184.216.34:45678")
+
+    assert endpoint is not None
+    assert endpoint.ip == "93.184.216.34"
+    assert endpoint.port == 45678
+
+    assert is_unusual_public_endpoint("93.184.216.34:45678")
+    assert not is_unusual_public_endpoint("93.184.216.34:443")
+    assert not is_unusual_public_endpoint("8.8.8.8:45678")
+    assert not is_unusual_public_endpoint("127.0.0.1:45678")
+    assert not is_unusual_public_endpoint("not-an-endpoint")

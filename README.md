@@ -35,7 +35,7 @@
    - [x] 识别高置信密钥值，例如常见 API key、云厂商 key、GitHub token、私钥头
    - [ ] 区分密钥类、账号类、网络地址类等敏感类别
    - [x] 识别公网 IP
-   - [ ] 识别公网 IP 加非常见端口
+   - [x] 识别公网 IP 加非常见端口
    - [x] 区分常见公共 IP 与需要关注的公网 IP
    - [ ] 过滤明显占位值，例如 `your-api-key`、`example`、`test-key`
    - [x] 避免把 `max_tokens`、`tokens_count` 这类计数字段误判为 token
