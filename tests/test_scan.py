@@ -1,4 +1,4 @@
-from secret_guard import FileKind, classify_file, has_findings, iter_scan_files, scan_file, scan_path, scan_text
+from secret_guard import FileKind, classify_file, has_findings, iter_scan_files, scan_file, scan_high_confidence_text, scan_path, scan_text
 
 
 def test_scan_text_returns_redacted_findings():
@@ -34,14 +34,23 @@ def test_scan_file_scans_text_files(tmp_path):
     assert findings[0].line == 1
 
 
-def test_scan_file_skips_binary_and_oversized_files(tmp_path):
+def test_scan_file_uses_high_confidence_scan_for_binary_and_oversized_files(tmp_path):
     binary_path = tmp_path / "binary.bin"
     large_path = tmp_path / "large.txt"
     binary_path.write_bytes(b"abc\x00sk-12345678901234567890")
     large_path.write_text("api_key=sk-12345678901234567890", encoding="utf-8")
 
-    assert scan_file(binary_path, salt=b"fixed-salt") == []
-    assert scan_file(large_path, salt=b"fixed-salt", max_text_bytes=4) == []
+    binary_findings = scan_file(binary_path, salt=b"fixed-salt")
+    large_findings = scan_file(large_path, salt=b"fixed-salt", max_text_bytes=4)
+
+    assert len(binary_findings) == 1
+    assert binary_findings[0].path == binary_path.as_posix()
+    assert len(large_findings) == 1
+    assert large_findings[0].path == large_path.as_posix()
+
+
+def test_scan_high_confidence_text_ignores_sensitive_keys_without_secret_values():
+    assert scan_high_confidence_text("api_key=short", salt=b"fixed-salt") == []
 
 
 def test_scan_path_scans_directory_and_skips_excluded_dirs(tmp_path):

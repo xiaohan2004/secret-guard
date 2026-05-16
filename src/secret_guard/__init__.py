@@ -18,7 +18,7 @@ from .identify import (
     parse_ip_port,
 )
 from .findings import Finding
-from .scan import FileKind, classify_file, fingerprint_secret, has_findings, iter_scan_files, scan_file, scan_path, scan_text
+from .scan import FileKind, classify_file, fingerprint_secret, has_findings, iter_scan_files, scan_file, scan_high_confidence_text, scan_path, scan_text
 
 __all__ = [
     "Assignment",
@@ -43,6 +43,7 @@ __all__ = [
     "has_findings",
     "iter_scan_files",
     "scan_file",
+    "scan_high_confidence_text",
     "scan_path",
     "scan_text",
 ]

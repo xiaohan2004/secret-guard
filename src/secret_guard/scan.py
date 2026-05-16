@@ -111,6 +111,28 @@ def scan_text(
     return sorted(findings)
 
 
+def scan_high_confidence_text(
+    text: str,
+    *,
+    path: str = "<text>",
+    salt: bytes | None = None,
+) -> list[Finding]:
+    """Scan text with only high-confidence secret value rules."""
+    findings: set[Finding] = set()
+    scan_salt = salt if salt is not None else secrets.token_bytes(32)
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        if is_high_confidence_secret_value(line):
+            findings.add(
+                Finding(
+                    category=SensitiveKind.SECRET.value,
+                    path=path,
+                    line=line_no,
+                    fingerprint=fingerprint_secret(line, salt=scan_salt),
+                )
+            )
+    return sorted(findings)
+
+
 def has_findings(findings: Iterable[Finding]) -> bool:
     return any(True for _ in findings)
 
@@ -128,8 +150,10 @@ def scan_file(
     except OSError:
         return []
 
-    if b"\0" in data[:4096] or len(data) > max_text_bytes:
-        return []
+    is_binary_or_large = b"\0" in data[:4096] or len(data) > max_text_bytes
+    if is_binary_or_large:
+        text = data.decode("latin1", errors="ignore")
+        return scan_high_confidence_text(text, path=file_path.as_posix(), salt=salt)
 
     text = data.decode("utf-8", errors="ignore")
     return scan_text(text, path=file_path.as_posix(), salt=salt)
