@@ -19,6 +19,7 @@ from .identify import (
 )
 from .findings import Finding
 from .redaction import RedactedValue, one_line_preview, redact_result, redact_text, redact_value
+from .rewrite import RewriteChange, RewritePlan, build_rewrite_plan
 from .scan import FileKind, classify_file, fingerprint_secret, has_findings, iter_scan_files, scan_file, scan_git_history, scan_high_confidence_text, scan_path, scan_sqlite, scan_text
 
 __all__ = [
@@ -27,6 +28,8 @@ __all__ = [
     "FileKind",
     "PublicEndpoint",
     "RedactedValue",
+    "RewriteChange",
+    "RewritePlan",
     "SensitiveKind",
     "classify_key_name",
     "classify_value",
@@ -44,6 +47,7 @@ __all__ = [
     "redact_text",
     "redact_value",
     "redact_result",
+    "build_rewrite_plan",
     "classify_file",
     "fingerprint_secret",
     "has_findings",
