@@ -26,6 +26,16 @@ def test_scan_text_ignores_non_sensitive_text():
     assert scan_text("normal_key=value\nmax_tokens=1024", salt=b"fixed-salt") == []
 
 
+def test_scan_text_deduplicates_same_finding():
+    findings = scan_text(
+        "api_key=sk-12345678901234567890",
+        path=".env",
+        salt=b"fixed-salt",
+    )
+
+    assert len(findings) == 1
+
+
 def test_scan_file_scans_text_files(tmp_path):
     config_path = tmp_path / "config.env"
     config_path.write_text("api_key=sk-12345678901234567890\n", encoding="utf-8")
