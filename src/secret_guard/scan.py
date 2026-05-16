@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import os
 import secrets
 from hashlib import sha256
 from pathlib import Path
@@ -18,6 +19,25 @@ from .identify import (
 
 
 MAX_TEXT_BYTES = 5 * 1024 * 1024
+EXCLUDED_DIRS = {
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    ".cache",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".next",
+    ".nuxt",
+    "target",
+    "out",
+}
 
 
 def fingerprint_secret(raw_value: object, *, salt: bytes | None = None, length: int = 10) -> str:
@@ -100,3 +120,60 @@ def scan_file(
 
     text = data.decode("utf-8", errors="ignore")
     return scan_text(text, path=file_path.as_posix(), salt=salt)
+
+
+def _is_excluded(path: Path, root: Path, excluded_paths: set[Path]) -> bool:
+    resolved = path.resolve()
+    if any(resolved == excluded or excluded in resolved.parents for excluded in excluded_paths):
+        return True
+    try:
+        relative_parts = path.relative_to(root).parts
+    except ValueError:
+        relative_parts = path.parts
+    return any(part in EXCLUDED_DIRS for part in relative_parts)
+
+
+def iter_scan_files(
+    root: str | Path,
+    *,
+    excluded_paths: Iterable[str | Path] | None = None,
+) -> Iterable[Path]:
+    """Yield files under a root while skipping common dependency and cache paths."""
+    root_path = Path(root)
+    excluded = {Path(item).resolve() for item in excluded_paths or ()}
+
+    if root_path.is_file():
+        if not _is_excluded(root_path, root_path.parent, excluded):
+            yield root_path
+        return
+
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        current = Path(dirpath)
+        dirnames[:] = [
+            dirname
+            for dirname in dirnames
+            if dirname not in EXCLUDED_DIRS
+            and not _is_excluded(current / dirname, root_path, excluded)
+        ]
+        if _is_excluded(current, root_path, excluded):
+            continue
+        for filename in filenames:
+            path = current / filename
+            if not _is_excluded(path, root_path, excluded):
+                yield path
+
+
+def scan_path(
+    root: str | Path,
+    *,
+    salt: bytes | None = None,
+    excluded_paths: Iterable[str | Path] | None = None,
+    max_text_bytes: int = MAX_TEXT_BYTES,
+) -> list[Finding]:
+    """Scan a file or directory tree."""
+    findings: list[Finding] = []
+    for path in iter_scan_files(root, excluded_paths=excluded_paths):
+        findings.extend(
+            scan_file(path, salt=salt, max_text_bytes=max_text_bytes)
+        )
+    return sorted(findings)

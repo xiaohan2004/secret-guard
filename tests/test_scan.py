@@ -1,4 +1,4 @@
-from secret_guard import has_findings, scan_file, scan_text
+from secret_guard import has_findings, iter_scan_files, scan_file, scan_path, scan_text
 
 
 def test_scan_text_returns_redacted_findings():
@@ -42,3 +42,29 @@ def test_scan_file_skips_binary_and_oversized_files(tmp_path):
 
     assert scan_file(binary_path, salt=b"fixed-salt") == []
     assert scan_file(large_path, salt=b"fixed-salt", max_text_bytes=4) == []
+
+
+def test_scan_path_scans_directory_and_skips_excluded_dirs(tmp_path):
+    keep_path = tmp_path / "keep.env"
+    ignored_dir = tmp_path / "node_modules"
+    ignored_path = ignored_dir / "ignored.env"
+    keep_path.write_text("api_key=sk-12345678901234567890\n", encoding="utf-8")
+    ignored_dir.mkdir()
+    ignored_path.write_text("api_key=sk-ignored123456789012345\n", encoding="utf-8")
+
+    findings = scan_path(tmp_path, salt=b"fixed-salt")
+
+    assert len(findings) == 1
+    assert findings[0].path == keep_path.as_posix()
+
+
+def test_iter_scan_files_supports_excluded_paths(tmp_path):
+    keep_path = tmp_path / "keep.env"
+    skip_path = tmp_path / "skip.env"
+    keep_path.write_text("api_key=sk-12345678901234567890\n", encoding="utf-8")
+    skip_path.write_text("api_key=sk-ignored123456789012345\n", encoding="utf-8")
+
+    files = list(iter_scan_files(tmp_path, excluded_paths={skip_path}))
+
+    assert keep_path in files
+    assert skip_path not in files
