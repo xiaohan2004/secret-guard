@@ -112,6 +112,21 @@ pip install git+https://github.com/your-name/secret-guard.git@v0.1.0
 
 ## 使用说明
 
+### 命令行审计
+
+`audit` 是给日常仓库检查和 Codex skill 使用的固定格式报告：
+
+```bash
+secret-guard audit .
+```
+
+它会输出两部分：
+
+- `1、是否存在敏感信息`
+- `2、敏感信息是否进入git提交`
+
+报告只展示文件路径、位置、类别和不可逆标识，不展示原始敏感值。
+
 ### 命令行扫描
 
 扫描单个文件或目录：

@@ -1,4 +1,6 @@
 import json
+import sqlite3
+import subprocess
 
 from secret_guard.cli import main
 
@@ -35,6 +37,63 @@ def test_cli_scan_can_fail_when_findings_exist(tmp_path, capsys):
 
     assert exit_code == 1
     assert "fingerprint=" in capsys.readouterr().out
+
+
+def test_cli_audit_outputs_skill_compatible_report_without_raw_values(tmp_path, capsys):
+    config_path = tmp_path / "config.env"
+    config_path.write_text("api_key=sk-12345678901234567890\n", encoding="utf-8")
+
+    exit_code = main(["audit", str(tmp_path)])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "1、是否存在敏感信息" in output
+    assert "2、敏感信息是否进入git提交" in output
+    assert "是" in output
+    assert "否" in output
+    assert "config.env" in output
+    assert "第1行 api_key" in output
+    assert "标识" in output
+    assert "sk-12345678901234567890" not in output
+
+
+def test_cli_audit_scans_sqlite_key_value_tables(tmp_path, capsys):
+    db_path = tmp_path / "config.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("create table settings (key text, value text)")
+        conn.execute(
+            "insert into settings values (?, ?)",
+            ("api_key", "sk-12345678901234567890"),
+        )
+
+    exit_code = main(["audit", str(tmp_path)])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "config.db" in output
+    assert "SQLite" not in output
+    assert "settings.api_key" in output
+    assert "sk-12345678901234567890" not in output
+
+
+def test_cli_audit_reports_committed_secrets_without_raw_values(tmp_path, capsys):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, stdout=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=tmp_path, check=True)
+    config_path = tmp_path / "config.env"
+    config_path.write_text("api_key=sk-12345678901234567890\n", encoding="utf-8")
+    subprocess.run(["git", "add", "config.env"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "add config"], cwd=tmp_path, check=True, stdout=subprocess.PIPE)
+
+    exit_code = main(["audit", str(tmp_path)])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    history_section = output.split("2、敏感信息是否进入git提交", 1)[1]
+    assert "是" in history_section
+    assert ":config.env" in history_section
+    assert "第1行 api_key" in history_section
+    assert "sk-12345678901234567890" not in output
 
 
 def test_cli_rewrite_defaults_to_dry_run(tmp_path, capsys):

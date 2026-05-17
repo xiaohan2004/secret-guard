@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 
+from .findings import Finding
 from .redaction import DEFAULT_REPLACEMENT, redact_text
 from .rewrite import apply_rewrite_plan, build_rewrite_plan
-from .scan import FileKind, classify_file, scan_git_history, scan_path, scan_sqlite
+from .scan import FileKind, classify_file, iter_scan_files, scan_git_history, scan_path, scan_sqlite
 
 
 def _print_json(value: object) -> None:
@@ -59,6 +61,76 @@ def _scan_command(args: argparse.Namespace) -> int:
     findings = sorted(set(findings))
     _print_findings(findings, json_output=args.json)
     return 1 if args.fail_on_findings and findings else 0
+
+
+def _category_label(category: str) -> str:
+    return {
+        "secret": "密钥/密码",
+        "account": "账号/用户名",
+        "network": "公网IP/网络地址",
+    }.get(category, category)
+
+
+def _location_label(finding: Finding) -> str:
+    location = f"第{finding.line}行" if finding.line > 0 else "未知位置"
+    if finding.key:
+        return f"{location} {finding.key}"
+    return location
+
+
+def _print_audit_section(findings: list[Finding]) -> None:
+    if not findings:
+        print("否")
+        return
+
+    print("是")
+    by_path: dict[str, list[Finding]] = {}
+    for finding in findings:
+        by_path.setdefault(finding.path, []).append(finding)
+
+    for path in sorted(by_path):
+        print(f"- {path}")
+        for finding in sorted(by_path[path]):
+            print(
+                f"  - {_location_label(finding)}："
+                f"{_category_label(finding.category)}，标识 {finding.fingerprint}"
+            )
+
+
+def _scan_workspace_for_audit(
+    root: Path,
+    *,
+    salt: bytes,
+    max_text_bytes: int,
+) -> list[Finding]:
+    findings: set[Finding] = set(scan_path(root, salt=salt, max_text_bytes=max_text_bytes))
+    sqlite_paths = [root] if root.is_file() else list(iter_scan_files(root))
+
+    for path in sqlite_paths:
+        if classify_file(path) != FileKind.SQLITE:
+            continue
+        findings.update(scan_sqlite(path, salt=salt))
+
+    return sorted(findings)
+
+
+def _audit_command(args: argparse.Namespace) -> int:
+    root = Path(args.path)
+    audit_salt = secrets.token_bytes(32)
+    workspace_findings = _scan_workspace_for_audit(
+        root,
+        salt=audit_salt,
+        max_text_bytes=args.max_text_bytes,
+    )
+    history_root = root.parent if root.is_file() else root
+    history_findings = scan_git_history(history_root, salt=audit_salt)
+
+    print("1、是否存在敏感信息")
+    _print_audit_section(workspace_findings)
+    print()
+    print("2、敏感信息是否进入git提交")
+    _print_audit_section(sorted(set(history_findings)))
+    return 0
 
 
 def _redact_command(args: argparse.Namespace) -> int:
@@ -133,6 +205,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit with status 1 when findings exist.",
     )
     scan_parser.set_defaults(func=_scan_command)
+
+    audit_parser = subparsers.add_parser(
+        "audit",
+        help="Print a fixed two-section secret audit report.",
+    )
+    audit_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Repository path to audit. Defaults to the current directory.",
+    )
+    audit_parser.add_argument(
+        "--max-text-bytes",
+        type=int,
+        default=5 * 1024 * 1024,
+        help="Maximum size for full text scans.",
+    )
+    audit_parser.set_defaults(func=_audit_command)
 
     redact_parser = subparsers.add_parser("redact", help="Redact inline secret-looking text.")
     redact_parser.add_argument("text", help="Text to redact.")
