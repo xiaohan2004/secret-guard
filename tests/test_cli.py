@@ -77,6 +77,19 @@ def test_cli_scan_reports_skipped_files_in_text_and_json(tmp_path, capsys):
     assert json_output["skipped"][0]["reason"] == "too_large"
 
 
+def test_cli_scan_reports_large_sqlite_file_as_skipped(tmp_path, capsys):
+    db_path = tmp_path / "config.db"
+    db_path.write_bytes(b"x" * 100)
+
+    exit_code = main(["scan", str(db_path), "--max-scan-bytes", "4", "--json"])
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["findings"] == []
+    assert output["skipped"][0]["path"] == db_path.as_posix()
+    assert output["skipped"][0]["reason"] == "too_large"
+
+
 def test_cli_audit_outputs_skill_compatible_report_without_raw_values(tmp_path, capsys):
     config_path = tmp_path / "config.env"
     config_path.write_text("api_key=sk-12345678901234567890\n", encoding="utf-8")
@@ -107,6 +120,20 @@ def test_cli_audit_reports_skipped_files(tmp_path, capsys):
     assert "3、是否存在跳过文件" in output
     assert huge_path.as_posix() in output
     assert "too_large" in output
+
+
+def test_cli_audit_does_not_scan_large_skipped_sqlite_files(tmp_path, capsys):
+    db_path = tmp_path / "config.db"
+    db_path.write_bytes(b"x" * 100)
+
+    exit_code = main(["audit", str(tmp_path), "--max-scan-bytes", "4"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "3、是否存在跳过文件" in output
+    assert db_path.as_posix() in output
+    assert "too_large" in output
+    assert "settings.api_key" not in output
 
 
 def test_cli_audit_scans_sqlite_key_value_tables(tmp_path, capsys):

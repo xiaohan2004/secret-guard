@@ -11,7 +11,7 @@ from pathlib import Path
 from .findings import Finding, ScanReport, SkippedFile
 from .redaction import DEFAULT_REPLACEMENT, redact_text
 from .rewrite import apply_rewrite_plan, build_rewrite_plan
-from .scan import FileKind, classify_file, iter_scan_files, scan_git_history, scan_path_report, scan_sqlite
+from .scan import FileKind, classify_file, iter_scan_files, scan_file_report, scan_git_history, scan_path_report, scan_sqlite
 
 
 def _print_json(value: object) -> None:
@@ -56,7 +56,14 @@ def _scan_command(args: argparse.Namespace) -> int:
     skipped: list[SkippedFile] = []
 
     if target.is_file() and classify_file(target) == FileKind.SQLITE:
-        findings.extend(scan_sqlite(target))
+        report = scan_file_report(
+            target,
+            max_text_bytes=args.max_text_bytes,
+            max_scan_bytes=args.max_scan_bytes,
+        )
+        skipped.extend(report.skipped)
+        if not report.skipped:
+            findings.extend(scan_sqlite(target))
     else:
         report = scan_path_report(
             target,
@@ -136,10 +143,13 @@ def _scan_workspace_for_audit(
     )
     findings: set[Finding] = set(path_report.findings)
     skipped: set[SkippedFile] = set(path_report.skipped)
+    skipped_paths = {item.path for item in skipped}
     sqlite_paths = [root] if root.is_file() else list(iter_scan_files(root))
 
     for path in sqlite_paths:
         if classify_file(path) != FileKind.SQLITE:
+            continue
+        if path.as_posix() in skipped_paths:
             continue
         findings.update(scan_sqlite(path, salt=salt))
 
