@@ -1,6 +1,8 @@
 import json
+import os
 import sqlite3
 import subprocess
+import sys
 
 from secret_guard.cli import main
 
@@ -12,6 +14,22 @@ def test_cli_redact_command_redacts_secret_text(capsys):
     output = capsys.readouterr().out
     assert "[secret hidden]" in output
     assert "sk-12345678901234567890" not in output
+
+
+def test_cli_module_entrypoint_shows_help():
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "src"
+    result = subprocess.run(
+        [sys.executable, "-m", "secret_guard.cli", "--help"],
+        check=False,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "usage: secret-guard" in result.stdout
 
 
 def test_cli_scan_outputs_safe_json_findings(tmp_path, capsys):

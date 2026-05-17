@@ -277,3 +277,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except OSError as exc:
         print(f"secret-guard: {exc}", file=sys.stderr)
         return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
