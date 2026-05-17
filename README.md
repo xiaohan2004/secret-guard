@@ -46,6 +46,32 @@ pip install git+https://github.com/xiaohan2004/secret-guard.git
 pip install git+https://github.com/xiaohan2004/secret-guard.git@v0.1.0
 ```
 
+## Agent Skill
+
+仓库内提供了一个 `scan-secrets` skill：
+
+```text
+skills/scan-secrets
+```
+
+### 手动安装
+
+复制到本地 agent skills 目录，例如 Codex：
+
+```powershell
+Copy-Item -Recurse -Force .\skills\scan-secrets "$env:USERPROFILE\.codex\skills\"
+```
+
+如果使用其他 coding agent，请复制到对应工具的 skills 目录。
+
+### 自然语言安装
+
+也可以让正在使用的 coding agent 帮你安装，例如：
+
+```text
+请从 https://github.com/xiaohan2004/secret-guard/tree/main/skills/scan-secrets 安装 scan-secrets skill 到我的本地 skills 目录。
+```
+
 ## 使用说明
 
 完整使用说明见 [docs/usage.md](docs/usage.md)。
