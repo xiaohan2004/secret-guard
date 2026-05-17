@@ -17,10 +17,10 @@ from .identify import (
     parse_assignment,
     parse_ip_port,
 )
-from .findings import Finding
+from .findings import Finding, ScanReport, SkippedFile
 from .redaction import RedactedValue, one_line_preview, redact_result, redact_text, redact_value
 from .rewrite import RewriteApplyResult, RewriteChange, RewritePlan, apply_rewrite_plan, build_rewrite_plan, can_rewrite_path
-from .scan import FileKind, classify_file, fingerprint_secret, has_findings, iter_scan_files, scan_file, scan_git_history, scan_high_confidence_text, scan_path, scan_sqlite, scan_text
+from .scan import FileKind, classify_file, fingerprint_secret, has_findings, iter_scan_files, scan_file, scan_file_report, scan_git_history, scan_high_confidence_file_chunks, scan_high_confidence_text, scan_path, scan_path_report, scan_sqlite, scan_text
 
 __all__ = [
     "Assignment",
@@ -31,7 +31,9 @@ __all__ = [
     "RewriteChange",
     "RewriteApplyResult",
     "RewritePlan",
+    "ScanReport",
     "SensitiveKind",
+    "SkippedFile",
     "classify_key_name",
     "classify_value",
     "is_common_public_ip",
@@ -56,9 +58,12 @@ __all__ = [
     "has_findings",
     "iter_scan_files",
     "scan_file",
+    "scan_file_report",
     "scan_git_history",
+    "scan_high_confidence_file_chunks",
     "scan_high_confidence_text",
     "scan_path",
+    "scan_path_report",
     "scan_sqlite",
     "scan_text",
 ]

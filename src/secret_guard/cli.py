@@ -8,10 +8,10 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 
-from .findings import Finding
+from .findings import Finding, ScanReport, SkippedFile
 from .redaction import DEFAULT_REPLACEMENT, redact_text
 from .rewrite import apply_rewrite_plan, build_rewrite_plan
-from .scan import FileKind, classify_file, iter_scan_files, scan_git_history, scan_path, scan_sqlite
+from .scan import FileKind, classify_file, iter_scan_files, scan_git_history, scan_path_report, scan_sqlite
 
 
 def _print_json(value: object) -> None:
@@ -22,13 +22,18 @@ def _finding_to_dict(finding: object) -> dict[str, object]:
     return asdict(finding)
 
 
-def _print_findings(findings: list[object], *, json_output: bool) -> None:
-    rows = [_finding_to_dict(finding) for finding in findings]
+def _skipped_to_dict(skipped: object) -> dict[str, object]:
+    return asdict(skipped)
+
+
+def _print_scan_report(report: ScanReport, *, json_output: bool) -> None:
+    rows = [_finding_to_dict(finding) for finding in report.findings]
+    skipped_rows = [_skipped_to_dict(skipped) for skipped in report.skipped]
     if json_output:
-        _print_json(rows)
+        _print_json({"findings": rows, "skipped": skipped_rows})
         return
 
-    if not rows:
+    if not rows and not skipped_rows:
         print("No findings.")
         return
 
@@ -39,27 +44,34 @@ def _print_findings(findings: list[object], *, json_output: bool) -> None:
             f"key={key}\tfingerprint={row['fingerprint']}"
         )
 
+    for row in skipped_rows:
+        size = row.get("size")
+        size_text = f"\tsize={size}" if size is not None else ""
+        print(f"skipped\t{row['path']}\treason={row['reason']}{size_text}")
+
 
 def _scan_command(args: argparse.Namespace) -> int:
     target = Path(args.path)
-    findings = []
+    findings: list[Finding] = []
+    skipped: list[SkippedFile] = []
 
     if target.is_file() and classify_file(target) == FileKind.SQLITE:
         findings.extend(scan_sqlite(target))
     else:
-        findings.extend(
-            scan_path(
-                target,
-                excluded_paths=args.exclude,
-                max_text_bytes=args.max_text_bytes,
-            )
+        report = scan_path_report(
+            target,
+            excluded_paths=args.exclude,
+            max_text_bytes=args.max_text_bytes,
+            max_scan_bytes=args.max_scan_bytes,
         )
+        findings.extend(report.findings)
+        skipped.extend(report.skipped)
 
     if args.git_history:
         findings.extend(scan_git_history(target))
 
-    findings = sorted(set(findings))
-    _print_findings(findings, json_output=args.json)
+    report = ScanReport(tuple(sorted(set(findings))), tuple(sorted(set(skipped))))
+    _print_scan_report(report, json_output=args.json)
     return 1 if args.fail_on_findings and findings else 0
 
 
@@ -97,13 +109,33 @@ def _print_audit_section(findings: list[Finding]) -> None:
             )
 
 
+def _print_skipped_section(skipped: list[SkippedFile]) -> None:
+    print("3、是否存在跳过文件")
+    if not skipped:
+        print("否")
+        return
+
+    print("是")
+    for item in sorted(skipped):
+        size_text = f"，大小 {item.size}" if item.size is not None else ""
+        print(f"- {item.path}：{item.reason}{size_text}")
+
+
 def _scan_workspace_for_audit(
     root: Path,
     *,
     salt: bytes,
     max_text_bytes: int,
-) -> list[Finding]:
-    findings: set[Finding] = set(scan_path(root, salt=salt, max_text_bytes=max_text_bytes))
+    max_scan_bytes: int,
+) -> ScanReport:
+    path_report = scan_path_report(
+        root,
+        salt=salt,
+        max_text_bytes=max_text_bytes,
+        max_scan_bytes=max_scan_bytes,
+    )
+    findings: set[Finding] = set(path_report.findings)
+    skipped: set[SkippedFile] = set(path_report.skipped)
     sqlite_paths = [root] if root.is_file() else list(iter_scan_files(root))
 
     for path in sqlite_paths:
@@ -111,25 +143,28 @@ def _scan_workspace_for_audit(
             continue
         findings.update(scan_sqlite(path, salt=salt))
 
-    return sorted(findings)
+    return ScanReport(tuple(sorted(findings)), tuple(sorted(skipped)))
 
 
 def _audit_command(args: argparse.Namespace) -> int:
     root = Path(args.path)
     audit_salt = secrets.token_bytes(32)
-    workspace_findings = _scan_workspace_for_audit(
+    workspace_report = _scan_workspace_for_audit(
         root,
         salt=audit_salt,
         max_text_bytes=args.max_text_bytes,
+        max_scan_bytes=args.max_scan_bytes,
     )
     history_root = root.parent if root.is_file() else root
     history_findings = scan_git_history(history_root, salt=audit_salt)
 
     print("1、是否存在敏感信息")
-    _print_audit_section(workspace_findings)
+    _print_audit_section(list(workspace_report.findings))
     print()
     print("2、敏感信息是否进入git提交")
     _print_audit_section(sorted(set(history_findings)))
+    print()
+    _print_skipped_section(list(workspace_report.skipped))
     return 0
 
 
@@ -200,6 +235,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum size for full text scans.",
     )
     scan_parser.add_argument(
+        "--max-scan-bytes",
+        type=int,
+        default=512 * 1024 * 1024,
+        help="Maximum size for any file scan before reporting it as skipped.",
+    )
+    scan_parser.add_argument(
         "--fail-on-findings",
         action="store_true",
         help="Exit with status 1 when findings exist.",
@@ -221,6 +262,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=5 * 1024 * 1024,
         help="Maximum size for full text scans.",
+    )
+    audit_parser.add_argument(
+        "--max-scan-bytes",
+        type=int,
+        default=512 * 1024 * 1024,
+        help="Maximum size for any file scan before reporting it as skipped.",
     )
     audit_parser.set_defaults(func=_audit_command)
 

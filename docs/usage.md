@@ -61,7 +61,7 @@ secret-guard audit .
 secret-guard audit
 ```
 
-输出固定包含两部分：
+输出固定包含三部分：
 
 ```text
 1、是否存在敏感信息
@@ -71,12 +71,16 @@ secret-guard audit
 
 2、敏感信息是否进入git提交
 否
+
+3、是否存在跳过文件
+否
 ```
 
 含义：
 
 - 第一部分扫描当前工作区。
 - 第二部分扫描当前仓库可达的 Git 提交。
+- 第三部分报告因为极大文件等原因未扫描的文件。
 - `是` 表示发现敏感信息。
 - `否` 表示没有发现敏感信息。
 - `标识` 是本次运行内生成的不可逆短指纹，不是原始值。
@@ -87,6 +91,12 @@ secret-guard audit
 
 ```bash
 secret-guard audit . --max-text-bytes 1048576
+```
+
+限制单个文件的最大扫描大小，超过后直接报告 skipped：
+
+```bash
+secret-guard audit . --max-scan-bytes 536870912
 ```
 
 ## scan：扫描文件或目录
@@ -107,6 +117,7 @@ secret-guard scan .
 
 ```text
 secret  backend/.env:3  key=api_key  fingerprint=1a2b3c4d5e
+skipped  large.log  reason=too_large  size=1073741824
 ```
 
 字段含义：
@@ -115,6 +126,7 @@ secret  backend/.env:3  key=api_key  fingerprint=1a2b3c4d5e
 - `path:line`：命中文件和行号。
 - `key`：命中的字段名，没有字段名时显示 `-`。
 - `fingerprint`：不可逆指纹。
+- `skipped` 行：表示文件未扫描，包含跳过原因和文件大小。
 
 输出 JSON：
 
@@ -125,15 +137,24 @@ secret-guard scan . --json
 JSON 输出示例：
 
 ```json
-[
-  {
-    "category": "secret",
-    "path": "backend/.env",
-    "line": 3,
-    "fingerprint": "1a2b3c4d5e",
-    "key": "api_key"
-  }
-]
+{
+  "findings": [
+    {
+      "category": "secret",
+      "path": "backend/.env",
+      "line": 3,
+      "fingerprint": "1a2b3c4d5e",
+      "key": "api_key"
+    }
+  ],
+  "skipped": [
+    {
+      "path": "large.log",
+      "reason": "too_large",
+      "size": 1073741824
+    }
+  ]
+}
 ```
 
 扫描 Git 历史：
@@ -160,7 +181,13 @@ secret-guard scan . --fail-on-findings
 secret-guard scan . --max-text-bytes 1048576
 ```
 
-`scan` 会自动跳过常见依赖目录、缓存目录、二进制文件和过大文件。对二进制或过大文件，只做高置信密钥模式扫描。
+限制单个文件的最大扫描大小，超过后直接报告 skipped：
+
+```bash
+secret-guard scan . --max-scan-bytes 536870912
+```
+
+`scan` 会自动跳过常见依赖目录和缓存目录。小文件会完整读入并完整扫描；二进制文件或超过 `--max-text-bytes` 的文件会按块读取，只做高置信密钥模式扫描；超过 `--max-scan-bytes` 的文件不会读取内容，会直接报告为 skipped。
 
 ## redact：脱敏文本
 
@@ -250,6 +277,12 @@ secret-guard rewrite backend/.env --max-text-bytes 1048576
 - `key`：命中的字段名。没有字段名时为 `null` 或 `-`。
 - `fingerprint`：不可逆短指纹，用来区分同一次扫描中的不同命中。
 
+跳过文件的结构化字段：
+
+- `path`：被跳过的文件路径。
+- `reason`：跳过原因，例如 `too_large` 或 `unreadable`。
+- `size`：文件大小。无法读取大小时为 `null`。
+
 指纹不会包含原始值，也不能还原原始值。默认情况下，指纹每次运行使用随机盐生成，不保证跨运行稳定。
 
 ## 退出码
@@ -331,6 +364,18 @@ file_findings = scan_file("backend/.env")
 repo_findings = scan_path(".")
 ```
 
+如果需要同时获取跳过文件信息，使用 report API：
+
+```python
+from secret_guard import scan_file_report, scan_path_report
+
+file_report = scan_file_report("backend/.env")
+repo_report = scan_path_report(".")
+
+print(file_report.findings)
+print(file_report.skipped)
+```
+
 排除路径：
 
 ```python
@@ -345,6 +390,21 @@ findings = scan_path(".", excluded_paths={".venv", "node_modules"})
 from secret_guard import scan_path
 
 findings = scan_path(".", max_text_bytes=1024 * 1024)
+```
+
+限制极大文件扫描大小，并获取 skipped 信息：
+
+```python
+from secret_guard import scan_path_report
+
+report = scan_path_report(
+    ".",
+    max_text_bytes=1024 * 1024,
+    max_scan_bytes=512 * 1024 * 1024,
+)
+
+for skipped in report.skipped:
+    print(skipped.path, skipped.reason, skipped.size)
 ```
 
 ### 扫描 SQLite

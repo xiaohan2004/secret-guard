@@ -11,7 +11,7 @@ from pathlib import Path
 from enum import Enum
 from typing import Iterable
 
-from .findings import Finding
+from .findings import Finding, ScanReport, SkippedFile
 from .identify import (
     SensitiveKind,
     classify_key_name,
@@ -23,6 +23,9 @@ from .identify import (
 
 
 MAX_TEXT_BYTES = 5 * 1024 * 1024
+MAX_SCAN_BYTES = 512 * 1024 * 1024
+STREAM_CHUNK_BYTES = 4 * 1024 * 1024
+STREAM_OVERLAP_BYTES = 4096
 EXCLUDED_DIRS = {
     ".git",
     "node_modules",
@@ -150,6 +153,65 @@ def scan_high_confidence_text(
     return sorted(findings)
 
 
+def _scan_high_confidence_bytes(
+    data: bytes,
+    *,
+    path: str,
+    salt: bytes | None = None,
+    base_line: int = 1,
+) -> list[Finding]:
+    text = data.decode("latin1", errors="ignore")
+    findings: set[Finding] = set()
+    scan_salt = salt if salt is not None else secrets.token_bytes(32)
+    for offset, line in enumerate(text.splitlines(), start=0):
+        if is_high_confidence_secret_value(line):
+            findings.add(
+                Finding(
+                    category=SensitiveKind.SECRET.value,
+                    path=path,
+                    line=base_line + offset,
+                    fingerprint=fingerprint_secret(line, salt=scan_salt),
+                )
+            )
+    return sorted(findings)
+
+
+def scan_high_confidence_file_chunks(
+    path: str | Path,
+    *,
+    salt: bytes | None = None,
+    chunk_bytes: int = STREAM_CHUNK_BYTES,
+    overlap_bytes: int = STREAM_OVERLAP_BYTES,
+) -> list[Finding]:
+    """Scan a large file in chunks with high-confidence value rules only."""
+    file_path = Path(path)
+    findings: set[Finding] = set()
+    scan_salt = salt if salt is not None else secrets.token_bytes(32)
+    overlap = b""
+    base_line = 1
+
+    with file_path.open("rb") as handle:
+        while True:
+            chunk = handle.read(chunk_bytes)
+            if not chunk:
+                break
+
+            window = overlap + chunk
+            overlap_line_adjustment = overlap.count(b"\n")
+            findings.update(
+                _scan_high_confidence_bytes(
+                    window,
+                    path=file_path.as_posix(),
+                    salt=scan_salt,
+                    base_line=max(1, base_line - overlap_line_adjustment),
+                )
+            )
+            base_line += chunk.count(b"\n")
+            overlap = window[-overlap_bytes:] if overlap_bytes > 0 else b""
+
+    return sorted(findings)
+
+
 def has_findings(findings: Iterable[Finding]) -> bool:
     return any(True for _ in findings)
 
@@ -160,20 +222,70 @@ def scan_file(
     salt: bytes | None = None,
     max_text_bytes: int = MAX_TEXT_BYTES,
 ) -> list[Finding]:
-    """Scan one UTF-8-like text file and skip binary or oversized files."""
+    """Scan one file and return findings only."""
+    return list(
+        scan_file_report(
+            path,
+            salt=salt,
+            max_text_bytes=max_text_bytes,
+        ).findings
+    )
+
+
+def scan_file_report(
+    path: str | Path,
+    *,
+    salt: bytes | None = None,
+    max_text_bytes: int = MAX_TEXT_BYTES,
+    max_scan_bytes: int = MAX_SCAN_BYTES,
+    chunk_bytes: int = STREAM_CHUNK_BYTES,
+    overlap_bytes: int = STREAM_OVERLAP_BYTES,
+) -> ScanReport:
+    """Scan one file and include skipped-file metadata."""
     file_path = Path(path)
+    try:
+        size = file_path.stat().st_size
+    except OSError:
+        return ScanReport((), (SkippedFile(file_path.as_posix(), "unreadable"),))
+
+    if size > max_scan_bytes:
+        return ScanReport(
+            (),
+            (
+                SkippedFile(
+                    file_path.as_posix(),
+                    "too_large",
+                    size=size,
+                ),
+            ),
+        )
+
+    try:
+        with file_path.open("rb") as handle:
+            prefix = handle.read(4096)
+    except OSError:
+        return ScanReport((), (SkippedFile(file_path.as_posix(), "unreadable", size=size),))
+
+    is_binary = b"\0" in prefix
+    if is_binary or size > max_text_bytes:
+        return ScanReport(
+            tuple(
+                scan_high_confidence_file_chunks(
+                    file_path,
+                    salt=salt,
+                    chunk_bytes=chunk_bytes,
+                    overlap_bytes=overlap_bytes,
+                )
+            )
+        )
+
     try:
         data = file_path.read_bytes()
     except OSError:
-        return []
-
-    is_binary_or_large = b"\0" in data[:4096] or len(data) > max_text_bytes
-    if is_binary_or_large:
-        text = data.decode("latin1", errors="ignore")
-        return scan_high_confidence_text(text, path=file_path.as_posix(), salt=salt)
+        return ScanReport((), (SkippedFile(file_path.as_posix(), "unreadable", size=size),))
 
     text = data.decode("utf-8", errors="ignore")
-    return scan_text(text, path=file_path.as_posix(), salt=salt)
+    return ScanReport(tuple(scan_text(text, path=file_path.as_posix(), salt=salt)))
 
 
 def classify_file(path: str | Path) -> FileKind:
@@ -240,13 +352,42 @@ def scan_path(
     excluded_paths: Iterable[str | Path] | None = None,
     max_text_bytes: int = MAX_TEXT_BYTES,
 ) -> list[Finding]:
-    """Scan a file or directory tree."""
+    """Scan a file or directory tree and return findings only."""
+    return list(
+        scan_path_report(
+            root,
+            salt=salt,
+            excluded_paths=excluded_paths,
+            max_text_bytes=max_text_bytes,
+        ).findings
+    )
+
+
+def scan_path_report(
+    root: str | Path,
+    *,
+    salt: bytes | None = None,
+    excluded_paths: Iterable[str | Path] | None = None,
+    max_text_bytes: int = MAX_TEXT_BYTES,
+    max_scan_bytes: int = MAX_SCAN_BYTES,
+    chunk_bytes: int = STREAM_CHUNK_BYTES,
+    overlap_bytes: int = STREAM_OVERLAP_BYTES,
+) -> ScanReport:
+    """Scan a file or directory tree and include skipped-file metadata."""
     findings: list[Finding] = []
+    skipped: list[SkippedFile] = []
     for path in iter_scan_files(root, excluded_paths=excluded_paths):
-        findings.extend(
-            scan_file(path, salt=salt, max_text_bytes=max_text_bytes)
+        report = scan_file_report(
+            path,
+            salt=salt,
+            max_text_bytes=max_text_bytes,
+            max_scan_bytes=max_scan_bytes,
+            chunk_bytes=chunk_bytes,
+            overlap_bytes=overlap_bytes,
         )
-    return sorted(findings)
+        findings.extend(report.findings)
+        skipped.extend(report.skipped)
+    return ScanReport(tuple(sorted(findings)), tuple(sorted(skipped)))
 
 
 def scan_sqlite(

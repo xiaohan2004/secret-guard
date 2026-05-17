@@ -39,7 +39,9 @@ def test_cli_scan_outputs_safe_json_findings(tmp_path, capsys):
     exit_code = main(["scan", str(config_path), "--json"])
 
     assert exit_code == 0
-    findings = json.loads(capsys.readouterr().out)
+    report = json.loads(capsys.readouterr().out)
+    findings = report["findings"]
+    assert report["skipped"] == []
     assert findings[0]["category"] == "secret"
     assert findings[0]["path"] == config_path.as_posix()
     assert findings[0]["line"] == 1
@@ -57,6 +59,24 @@ def test_cli_scan_can_fail_when_findings_exist(tmp_path, capsys):
     assert "fingerprint=" in capsys.readouterr().out
 
 
+def test_cli_scan_reports_skipped_files_in_text_and_json(tmp_path, capsys):
+    huge_path = tmp_path / "huge.txt"
+    huge_path.write_bytes(b"abcde")
+
+    text_exit_code = main(["scan", str(tmp_path), "--max-scan-bytes", "4"])
+    text_output = capsys.readouterr().out
+
+    json_exit_code = main(["scan", str(tmp_path), "--max-scan-bytes", "4", "--json"])
+    json_output = json.loads(capsys.readouterr().out)
+
+    assert text_exit_code == 0
+    assert "skipped" in text_output
+    assert "reason=too_large" in text_output
+    assert json_exit_code == 0
+    assert json_output["findings"] == []
+    assert json_output["skipped"][0]["reason"] == "too_large"
+
+
 def test_cli_audit_outputs_skill_compatible_report_without_raw_values(tmp_path, capsys):
     config_path = tmp_path / "config.env"
     config_path.write_text("api_key=sk-12345678901234567890\n", encoding="utf-8")
@@ -67,12 +87,26 @@ def test_cli_audit_outputs_skill_compatible_report_without_raw_values(tmp_path, 
     output = capsys.readouterr().out
     assert "1、是否存在敏感信息" in output
     assert "2、敏感信息是否进入git提交" in output
+    assert "3、是否存在跳过文件" in output
     assert "是" in output
     assert "否" in output
     assert "config.env" in output
     assert "第1行 api_key" in output
     assert "标识" in output
     assert "sk-12345678901234567890" not in output
+
+
+def test_cli_audit_reports_skipped_files(tmp_path, capsys):
+    huge_path = tmp_path / "huge.txt"
+    huge_path.write_bytes(b"abcde")
+
+    exit_code = main(["audit", str(tmp_path), "--max-scan-bytes", "4"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "3、是否存在跳过文件" in output
+    assert huge_path.as_posix() in output
+    assert "too_large" in output
 
 
 def test_cli_audit_scans_sqlite_key_value_tables(tmp_path, capsys):
