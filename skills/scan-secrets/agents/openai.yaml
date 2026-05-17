@@ -1,4 +1,4 @@
 interface:
   display_name: "Scan Secrets"
   short_description: "Scan a repo for secrets and committed leaks."
-  default_prompt: "Scan the current repository for sensitive information and check whether any findings have entered Git commits."
+  default_prompt: "Use $scan-secrets to scan the current repository for sensitive information, check Git history, and report any skipped-file warnings."

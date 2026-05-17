@@ -189,6 +189,46 @@ secret-guard scan . --max-scan-bytes 536870912
 
 `scan` 会自动跳过常见依赖目录和缓存目录。小文件会完整读入并完整扫描；二进制文件或超过 `--max-text-bytes` 的文件会按块读取，只做高置信密钥模式扫描；超过 `--max-scan-bytes` 的文件不会读取内容，会直接报告为 skipped。
 
+## 文件大小阈值
+
+`secret-guard` 使用两个文件大小阈值控制扫描行为：
+
+- `max_text_bytes`：完整文本扫描上限，默认 5 MB。
+- `max_scan_bytes`：任何扫描的最大文件大小，默认 512 MB。
+
+两者的区别：
+
+- 小于等于 `max_text_bytes` 的文件会完整读入内存，并执行完整扫描。
+- 大于 `max_text_bytes`、小于等于 `max_scan_bytes` 的文件不会整体读入内存，而是按块读取。
+- 大于 `max_scan_bytes` 的文件不会读取内容，会直接记录到 skipped。
+
+大文件分块扫描只执行高置信密钥值规则，例如常见 API key、云厂商 key、GitHub token、私钥头等。它不会完整解析普通赋值语法，因此大文件中的 `password=...`、`api_key=...` 这类低置信上下文可能不会被识别。
+
+分块扫描会保留一小段 overlap，用来降低密钥刚好跨越两个块边界时漏检的风险。overlap 不能保证覆盖所有极端情况，但能避免常见的边界截断问题。
+
+默认处理路径：
+
+```text
+文件大小 <= max_text_bytes
+  -> 完整读入
+  -> 完整扫描
+
+max_text_bytes < 文件大小 <= max_scan_bytes
+  -> 分块读取
+  -> 高置信密钥扫描
+
+文件大小 > max_scan_bytes
+  -> 不读取内容
+  -> 报告 skipped
+```
+
+调整建议：
+
+- 想扫描更多普通大文本内容：调高 `--max-text-bytes`。
+- 想完全避免超大文件 I/O：调低 `--max-scan-bytes`。
+- 想尽量不漏掉大文件里的高置信密钥：保持 `--max-scan-bytes` 足够大，但不要无限制。
+- 在 CI 或日常仓库审计中，建议保留 skipped 输出，并人工确认 skipped 文件是否应该加入排除列表或单独处理。
+
 ## redact：脱敏文本
 
 脱敏一段文本：
