@@ -69,7 +69,7 @@ Copy-Item -Recurse -Force .\skills\scan-secrets "$env:USERPROFILE\.codex\skills\
 也可以让正在使用的 coding agent 帮你安装，例如：
 
 ```text
-请从 https://github.com/xiaohan2004/secret-guard/tree/main/skills/scan-secrets 安装 scan-secrets skill 到我的本地 skills 目录。
+请从 https://github.com/xiaohan2004/secret-guard/tree/master/skills/scan-secrets 安装 scan-secrets skill 到我的本地 skills 目录。
 ```
 
 ## 使用说明
